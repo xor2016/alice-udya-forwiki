@@ -1,3 +1,4 @@
+
 #здесь выполняются функции устройств
 import functions
 import config
@@ -5,9 +6,10 @@ import json
 import requests
 import string
 import other
+import scene
 path_devices = "devices.txt"
 ifttt_token = config.ifttt_token
-blynk_serv = config.blink_ip
+blynk_serv = config.blynk_ip
 
 #Функция запроса списка устройств
 def get_list_dev():
@@ -35,6 +37,9 @@ def return_capabilities(dev_type,dev_param,device_list_second):
 			device_list_second = device_list_second+','
 	elif dev_type == "другое":
 		device_list_second = device_list_second+other.other_dev_main(dev_param)
+		device_list_second = device_list_second+','
+	elif dev_type == "сцена":
+		device_list_second = device_list_second+'{"id":%s,"name":%s,"description":%s,"room":%s,"type":"devices.types.switch","capabilities":[{"type":"devices.capabilities.on_off","retrievable":true}],"device_info":{"manufacturer":%s,"model":%s,"hw_version":%s,"sw_version":%s}}' % (str(dev_param[0]),str(dev_param[1]),str(dev_param[2]),str(dev_param[3]),str(dev_param[4]),str(dev_param[5]),str(dev_param[6]),str(dev_param[7]))
 		device_list_second = device_list_second+','
 	else:
 		pass
@@ -75,14 +80,21 @@ def choise_but_url(dev_param,st_str):
 	elif dev_ch_url == "blynk":#тут ок
 		blynk_tok = str(dev_param[11].replace("\"",""))
 		blynk_pin = str(dev_param[13].replace("\"",""))
+		blynk_max = str(dev_param[14].replace("\"",""))
 		val_br = str(st_str)
+		val_br = str(round((blynk_max/100)*int(val_br)))
 		url_geton = "http://%s/%s/update/%s?value=%s" % (blynk_serv,blynk_tok,blynk_pin,val_br)
 	elif dev_ch_url == "any":
 		stat_info = str(dev_param[12].replace("\"","")).lower()
 		st_str_str = str(st_str)
+
 		if stat_info == "status":
+			any_max = str(dev_param[19].replace("\"",""))
+			st_str_str = str(round((any_max/100)*int(st_str_str)))
 			url_geton = str(dev_param[15]).replace("\"","").replace("--val--",st_str_str)
 		else:
+			any_max = str(dev_param[14].replace("\"",""))
+			st_str_str = str(round((any_max/100)*int(st_str_str)))
 			url_geton = str(dev_param[13]).replace("\"","").replace("--val--",st_str_str)
 	else:
 		pass
@@ -111,36 +123,38 @@ def choise_url(dev_param):
 	return url_geton,url_getoff
 
 #Функция выбора устройства
-def test_dev_ctrl(dev_param,req_save,dev_id):
+def test_dev_ctrl(dev_param,req_save,dev_id,num_dev):
 	dev_type = str(dev_param[8].replace("\"","")).lower()
 	if dev_type == "выключатель" or dev_type == "розетка":
 		url_geton,url_getoff = choise_url(dev_param)
-		st_str = str(req_save['payload']['devices'][0]['capabilities'][0]['state']['value'])#request.json
+		st_str = str(req_save['payload']['devices'][num_dev]['capabilities'][0]['state']['value'])#request.json
 		if "True" in str(st_str):
 			response = requests.request("GET", url_geton)
 		elif "False" in str(st_str):
 			response = requests.request("GET", url_getoff)
 		else:
 			pass
-		ctrl_second = '{"devices": [{"id": "%s","capabilities": [{"type": "devices.capabilities.on_off","state": {"instance": "on","action_result": {"status": "DONE"}}}]}]}}' % dev_id
+		ctrl_second = '{"id": "%s","capabilities": [{"type": "devices.capabilities.on_off","state": {"instance": "on","action_result": {"status": "DONE"}}}]},' % dev_id
 	elif dev_type == "лампа":
 		url_geton,url_getoff = choise_url(dev_param)
 		if "devices.capabilities.on_off" in str(req_save['payload']['devices']):
-			st_str = str(req_save['payload']['devices'][0]['capabilities'][0]['state']['value'])#request.json
+			st_str = str(req_save['payload']['devices'][num_dev]['capabilities'][0]['state']['value'])#request.json
 			if "True" in str(st_str):
 				response = requests.request("GET", url_geton)
 			elif "False" in str(st_str):
 				response = requests.request("GET", url_getoff)
 			else:
 				pass
-			ctrl_second = '{"devices": [{"id": "%s","capabilities": [{"type": "devices.capabilities.on_off","state": {"instance": "on","action_result": {"status": "DONE"}}}]}]}}' % dev_id
+			ctrl_second = '{"id": "%s","capabilities": [{"type": "devices.capabilities.on_off","state": {"instance": "on","action_result": {"status": "DONE"}}}]},' % dev_id
 		else:
-			st_str = int(req_save['payload']['devices'][0]['capabilities'][0]['state']['value'])
+			st_str = int(req_save['payload']['devices'][num_dev]['capabilities'][0]['state']['value'])
 			url_getonB = choise_but_url(dev_param,st_str)
 			response = requests.request("GET", url_getonB)
-			ctrl_second = '{"devices": [{"id": "%s","capabilities": [{"type": "devices.capabilities.range","state": {"instance": "brightness","action_result": {"status": "DONE"}}}]}]}}' % (dev_id)
+			ctrl_second = '{"id": "%s","capabilities": [{"type": "devices.capabilities.range","state": {"instance": "brightness","action_result": {"status": "DONE"}}}]},' % (dev_id)
 	elif dev_type == "другое":
-		ctrl_second = other.control_other(dev_id,req_save,dev_param)
+		ctrl_second = other.control_other(dev_id,req_save,dev_param,num_dev)
+	elif dev_type == "сцена":
+		ctrl_second = scene.control_scene(dev_id,req_save,dev_param,num_dev)
 	else:
 		pass
 	return ctrl_second
@@ -149,17 +163,26 @@ def test_dev_ctrl(dev_param,req_save,dev_id):
 def main_for_control(req_save):
 	list_dev = get_list_dev() #список строк из devices.txt
 	request_id =functions.request_id_get()
-	ctrl_list_first='{"request_id":"%s","payload":' % request_id
+	ctrl_list_first='{"request_id":"%s","payload":{"devices": [' % request_id
 	ctrl_list_second = ""
-	id_device = str(req_save['payload']['devices'][0]['id'])
-	for str_dev in list_dev:
-		dev_param = functions.clean_text (str_dev).split(",")
-		dev_id = str(dev_param[0].replace("\"",""))
-		if id_device == dev_id:
-			ctrl_list_second = test_dev_ctrl(dev_param,req_save,dev_id)
-		else:
-			pass
-	ctrl_str = ctrl_list_first+ctrl_list_second
+	num_dev = 0
+	for numstr in list_dev:
+		for str_dev in list_dev:
+			try:
+				id_device = str(req_save['payload']['devices'][num_dev]['id'])
+				dev_param = functions.clean_text (str_dev).split(",")
+				dev_id = str(dev_param[0].replace("\"",""))
+				if id_device == dev_id:
+					ctrl_list_second_tmp = test_dev_ctrl(dev_param,req_save,dev_id,num_dev)
+					ctrl_list_second = ctrl_list_second+ctrl_list_second_tmp
+				else:
+					pass
+			except:
+				pass
+		num_dev = num_dev+1
+	ctrl_list_second = ctrl_list_second[0:(len(ctrl_list_second)-1)]
+	ctrl_str = ctrl_list_first+ctrl_list_second+']}}'
+	print ("\nОтвет____ ",ctrl_str)
 
 	return ctrl_str
 	
@@ -226,14 +249,17 @@ def choise_status_lamp(dev_param,dev_id):
 	elif dev_ch_stat == "blynk":
 		blynk_tok = str(dev_param[11].replace("\"",""))
 		pin_brigh = str(dev_param[13].replace("\"",""))
+		blynk_max = str(dev_param[14].replace("\"",""))
 		url_brigh = 'http://%s/%s/get/%s' % (blynk_serv,blynk_tok,pin_brigh)
 		response = requests.get(url_brigh)
 		response.encoding = 'utf-8'
 		val_brigh = response.text
 		for i in ["\"","[","]"]:
 			val_brigh = val_brigh.replace(i,"")
+		val_brigh = int(round((100/blynk_max)*int(val_brigh)))
 	elif dev_ch_stat == "any":
 		#тут ваяем проверку яркости с энидевайсом
+		any_max = str(dev_param[19].replace("\"",""))
 		url_brigh = str(dev_param[16].replace("\"",""))
 		fst_str = str(dev_param[17])
 		sec_str = str(dev_param[18])
@@ -243,6 +269,7 @@ def choise_status_lamp(dev_param,dev_id):
 		indS = val_brigh.find(fst_str)+len(fst_str)
 		indE = val_brigh.find(sec_str)
 		val_brigh = int(val_brigh[indS:indE])
+		val_brigh = int(round((100/any_max)*int(val_brigh)))
 	else:
 		pass
 	url_for_stat = '{"devices":[{"id":"%s","capabilities": [{"type": "devices.capabilities.range","state": {"instance": "brightness","value": %s}},{"type": "devices.capabilities.on_off","state":{"instance": "on","value":%s}}]}]}}' % (dev_id,val_brigh,st_value)
@@ -265,6 +292,8 @@ def test_dev_stat(dev_param,req_save,dev_id):
 			url_for_stat = '{"devices":[{"id":"%s","capabilities": [{"type": "devices.capabilities.range","state": {"instance": "brightness","value": 100}},{"type": "devices.capabilities.on_off","state":{"instance": "on","value":false}}]}]}}' % dev_id
 	elif dev_type == "другое":
 		url_for_stat = other.status_other(dev_param,dev_id,req_save)
+	elif dev_type == "сцена":
+		url_for_stat = '{"devices":[{"id":"%s","capabilities": [{"type": "devices.capabilities.on_off","state":{"instance": "on","value":false}}]}]}}' % dev_id
 	else:
 		pass
 	return url_for_stat
@@ -289,3 +318,4 @@ def main_status_dev(req_save):
 	return stat_str
 
 ###############_КОНЕЦ РАЗДЕЛА ЗАПРОСА СОСТОЯНИЯ_#############
+
