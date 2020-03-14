@@ -1,2 +1,2 @@
-"noorelay4","Лампа","Лампа в гостиной","Кабинет","Noolite","Модель","01","01","Тип Выключатель","any","https://connect.smartliving.ru/public.php?key=e57a0013c6372c0389d26207c145a10c&","https://connect.smartliving.ru/public.php?key=97c3d9285bb803802376f87a7923d803&","nostatus"
+"noorelay4","Лампа","Лампа в гостиной","Гостиная","Noolite","Модель","01","01","Тип Выключатель","any","https://connect.smartliving.ru/public.php?key=e57a0013c6372c0389d26207c145a10c&","https://connect.smartliving.ru/public.php?key=97c3d9285bb803802376f87a7923d803&","nostatus"
 
